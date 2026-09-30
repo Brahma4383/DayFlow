@@ -1,0 +1,2484 @@
+{
+  "info": {
+    "name": "DayFlow API",
+    "description": "Tests every DayFlow backend API.\n\nRun it with the Collection Runner (Run collection) so the requests run in order: Register saves the token and later requests reuse the ids they create.\n\nEach run registers a new user (postman<number>@test.com), so the checks always start from an empty account.\n\nStart the backend first: `python manage.py runserver`. Change `base_url` in the collection Variables tab if your server runs somewhere else.\n\n\"Complete Focus Session\" waits 61 seconds on purpose, for its 1-minute session to finish.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "1. Auth",
+      "description": "Register, log in, and check the current user. Logout is in the last folder.",
+      "item": [
+        {
+          "name": "Register",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/auth/register/",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"name\": \"Postman User\",\n    \"email\": \"{{email}}\",\n    \"password\": \"{{password}}\",\n    \"confirm_password\": \"{{password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// A new email every run, so Register always works",
+                  "pm.collectionVariables.set('email', `postman${Date.now()}@test.com`);",
+                  "",
+                  "// Today's date and weekday on this computer, used by later requests",
+                  "const now = new Date();",
+                  "const pad = (n) => String(n).padStart(2, '0');",
+                  "pm.collectionVariables.set('today', `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`);",
+                  "const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];",
+                  "pm.collectionVariables.set('weekday', days[now.getDay()]);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201 Created', () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.test('Returns a 40-character token', () => pm.expect(body.token).to.be.a('string').and.have.lengthOf(40));",
+                  "pm.test('Returns the user without a password', () => {",
+                  "    pm.expect(body.user.email).to.eql(pm.collectionVariables.get('email'));",
+                  "    pm.expect(body.user.name).to.eql('Postman User');",
+                  "    pm.expect(body.user).to.not.have.property('password');",
+                  "});",
+                  "pm.collectionVariables.set('token', body.token);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Register - duplicate email",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/auth/register/",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"name\": \"Someone Else\",\n    \"email\": \"{{email}}\",\n    \"password\": \"{{password}}\",\n    \"confirm_password\": \"{{password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));",
+                  "pm.test('Error on email: ' + \"An account with this email already exists.\", () => {",
+                  "    pm.expect(pm.response.json().email).to.include(\"An account with this email already exists.\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Register - passwords do not match",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/auth/register/",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"name\": \"Mismatch\",\n    \"email\": \"mismatch{{$timestamp}}@test.com\",\n    \"password\": \"Sunrise#2026\",\n    \"confirm_password\": \"Different#2026\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));",
+                  "pm.test('Error on confirm_password: ' + \"Passwords do not match.\", () => {",
+                  "    pm.expect(pm.response.json().confirm_password).to.include(\"Passwords do not match.\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Register - weak password",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/auth/register/",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"name\": \"Weak\",\n    \"email\": \"weak{{$timestamp}}@test.com\",\n    \"password\": \"12345\",\n    \"confirm_password\": \"12345\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));",
+                  "pm.test('Error on password: ' + \"This password is too short. It must contain at least 8 characters.\", () => {",
+                  "    pm.expect(pm.response.json().password).to.include(\"This password is too short. It must contain at least 8 characters.\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Register - missing fields",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/auth/register/",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));",
+                  "pm.test('All four fields are required', () => {",
+                  "    pm.expect(pm.response.json()).to.have.all.keys('name', 'email', 'password', 'confirm_password');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/auth/login/",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"email\": \"{{email}}\",\n    \"password\": \"{{password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('Returns a token and the user', () => {",
+                  "    pm.expect(body.token).to.have.lengthOf(40);",
+                  "    pm.expect(body.user.email).to.eql(pm.collectionVariables.get('email'));",
+                  "});",
+                  "pm.collectionVariables.set('token', body.token);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login - wrong password",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/auth/login/",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"email\": \"{{email}}\",\n    \"password\": \"WrongPassword1\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));",
+                  "pm.test('Error on non_field_errors: ' + \"Invalid email or password.\", () => {",
+                  "    pm.expect(pm.response.json().non_field_errors).to.include(\"Invalid email or password.\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Current User",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Token {{token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/auth/me/"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('Returns the logged-in user', () => {",
+                  "    pm.expect(pm.response.json().email).to.eql(pm.collectionVariables.get('email'));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Current User - no token",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/api/auth/me/"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 401 Unauthorized', () => pm.response.to.have.status(401));",
+                  "pm.test('Message: ' + \"Authentication credentials were not provided.\", () => pm.expect(pm.response.json().detail).to.eql(\"Authentication credentials were not provided.\"));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2. Tasks",
+      "description": "Create, read, update, delete, search, filter and sort tasks.",
+      "item": [
+        {
+          "name": "Create Task",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Token {{token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/tasks/",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"title\": \"Learn Java\",\n    \"description\": \"Selenium needs Java\",\n    \"priority\": \"high\",\n    \"due_date\": \"{{today}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201 Created', () => pm.response.to.have.status(201));",
+                  "const task = pm.response.json();",
+                  "pm.test('Task is pending with no completed_at', () => {",
+                  "    pm.expect(task.title).to.eql('Learn Java');",
+                  "    pm.expect(task.status).to.eql('pending');",
+                  "    pm.expect(task.completed_at).to.be.null;",
+                  "});",
+                  "pm.collectionVariables.set('task_id', task.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create Task - second task",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Token {{token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/tasks/",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"title\": \"Buy groceries\",\n    \"priority\": \"low\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201 Created', () => pm.response.to.have.status(201));",
+                  "pm.test('Defaults: no due date', () => pm.expect(pm.response.json().due_date).to.be.null);",
+                  "pm.collectionVariables.set('second_task_id', pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create Task - blank title",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Token {{token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/tasks/",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"title\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));",
+                  "pm.test('Error on title: ' + \"This field may not be blank.\", () => {",
+                  "    pm.expect(pm.response.json().title).to.include(\"This field may not be blank.\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create Task - invalid priority",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Token {{token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/tasks/",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"title\": \"X\",\n    \"priority\": \"urgent\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));",
+                  "pm.test('Error on priority: ' + \"\\\"urgent\\\" is not a valid choice.\", () => {",
+                  "    pm.expect(pm.response.json().priority).to.include(\"\\\"urgent\\\" is not a valid choice.\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List Tasks",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Token {{token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/tasks/"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('Paginated response', () => pm.expect(body).to.have.all.keys('count', 'next', 'previous', 'results'));",
+                  "pm.test('Contains the 2 tasks', () => pm.expect(body.count).to.eql(2));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Task",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Token {{token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/tasks/{{task_id}}/"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('Returns the right task', () => {",
+                  "    pm.expect(pm.response.json().id).to.eql(Number(pm.collectionVariables.get('task_id')));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update Task (PUT)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Token {{token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/tasks/{{task_id}}/",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"title\": \"Learn Java basics\",\n    \"description\": \"Variables and loops\",\n    \"priority\": \"high\",\n    \"due_date\": \"{{today}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('Title updated', () => pm.expect(pm.response.json().title).to.eql('Learn Java basics'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Move Task to In Progress (PATCH)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Token {{token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/tasks/{{task_id}}/",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"status\": \"in_progress\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "const task = pm.response.json();",
+                  "pm.test('Status in_progress, not completed yet', () => {",
+                  "    pm.expect(task.status).to.eql('in_progress');",
+                  "    pm.expect(task.completed_at).to.be.null;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Filter Tasks by several statuses",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Token {{token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/tasks/?status=pending,in_progress"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('Both open tasks (to do + in progress)', () => {",
+                  "    const statuses = pm.response.json().results.map((t) => t.status).sort();",
+                  "    pm.expect(statuses).to.eql(['in_progress', 'pending']);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Mark Task Completed (PATCH)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Token {{token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/tasks/{{task_id}}/",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"status\": \"completed\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "const task = pm.response.json();",
+                  "pm.test('Status completed and completed_at set', () => {",
+                  "    pm.expect(task.status).to.eql('completed');",
+                  "    pm.expect(task.completed_at).to.not.be.null;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Search Tasks",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Token {{token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/tasks/?search=java"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('Finds only the Java task', () => {",
+                  "    pm.expect(body.count).to.eql(1);",
+                  "    pm.expect(body.results[0].title).to.include('Java');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Filter Tasks by Status",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Token {{token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/tasks/?status=completed"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('Only completed tasks', () => {",
+                  "    const results = pm.response.json().results;",
+                  "    pm.expect(results).to.have.lengthOf(1);",
+                  "    results.forEach((t) => pm.expect(t.status).to.eql('completed'));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Filter Tasks by Priority",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Token {{token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/tasks/?priority=low"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('Only the low-priority task', () => {",
+                  "    const results = pm.response.json().results;",
+                  "    pm.expect(results).to.have.lengthOf(1);",
+                  "    pm.expect(results[0].title).to.eql('Buy groceries');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Filter Tasks by Due Date",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Token {{token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/tasks/?due_date={{today}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('Only tasks due today', () => {",
+                  "    const results = pm.response.json().results;",
+                  "    pm.expect(results).to.have.lengthOf(1);",
+                  "    pm.expect(results[0].due_date).to.eql(pm.collectionVariables.get('today'));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Sort Tasks by Priority",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Token {{token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/tasks/?ordering=-priority"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('Highest priority first', () => {",
+                  "    const priorities = pm.response.json().results.map((t) => t.priority);",
+                  "    pm.expect(priorities).to.eql(['high', 'low']);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Filter Tasks - invalid status",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Token {{token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/tasks/?status=done"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));",
+                  "pm.test('Error on status: ' + \"Must be one of: pending, in_progress, completed.\", () => {",
+                  "    pm.expect(pm.response.json().status).to.include(\"Must be one of: pending, in_progress, completed.\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete Task",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Token {{token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/tasks/{{second_task_id}}/"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 204 No Content', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Deleted Task",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Token {{token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/tasks/{{second_task_id}}/"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 404 Not Found', () => pm.response.to.have.status(404));",
+                  "pm.test('Message: ' + \"No Task matches the given query.\", () => pm.expect(pm.response.json().detail).to.eql(\"No Task matches the given query.\"));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "3. Habits",
+      "description": "Create, read, update, delete and complete habits.",
+      "item": [
+        {
+          "name": "Create Daily Habit",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Token {{token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/habits/",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"name\": \"Drink water\",\n    \"description\": \"8 glasses\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201 Created', () => pm.response.to.have.status(201));",
+                  "const habit = pm.response.json();",
+                  "pm.test('Daily habit with target 7, not done yet', () => {",
+                  "    pm.expect(habit.frequency).to.eql('daily');",
+                  "    pm.expect(habit.target_days).to.eql(7);",
+                  "    pm.expect(habit.completed_today).to.be.false;",
+                  "    pm.expect(habit.completions_this_week).to.eql(0);",
+                  "});",
+                  "pm.collectionVariables.set('habit_id', habit.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create Weekly Habit",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Token {{token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/habits/",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"name\": \"Exercise\",\n    \"frequency\": \"weekly\",\n    \"target_days\": 3\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201 Created', () => pm.response.to.have.status(201));",
+                  "pm.test('Weekly habit, 3 days per week', () => pm.expect(pm.response.json().target_days).to.eql(3));",
+                  "pm.collectionVariables.set('weekly_habit_id', pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create Weekly Habit - missing target",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Token {{token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/habits/",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"name\": \"Gym\",\n    \"frequency\": \"weekly\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));",
+                  "pm.test('Error on target_days: ' + \"For weekly habits, choose 1 to 6 days per week. Use \\\"daily\\\" for every day.\", () => {",
+                  "    pm.expect(pm.response.json().target_days).to.include(\"For weekly habits, choose 1 to 6 days per week. Use \\\"daily\\\" for every day.\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List Habits",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Token {{token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/habits/"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('Contains the 2 habits, oldest first', () => {",
+                  "    const names = pm.response.json().results.map((h) => h.name);",
+                  "    pm.expect(names).to.eql(['Drink water', 'Exercise']);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Habit",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Token {{token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/habits/{{habit_id}}/"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('Returns the right habit', () => pm.expect(pm.response.json().name).to.eql('Drink water'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update Habit (PUT)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Token {{token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/habits/{{habit_id}}/",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"name\": \"Drink 3L water\",\n    \"description\": \"8 glasses\",\n    \"frequency\": \"daily\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('Name updated', () => pm.expect(pm.response.json().name).to.eql('Drink 3L water'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Complete Habit",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Token {{token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/habits/{{habit_id}}/complete/"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "const habit = pm.response.json();",
+                  "pm.test('Done today, 1 this week', () => {",
+                  "    pm.expect(habit.completed_today).to.be.true;",
+                  "    pm.expect(habit.completions_this_week).to.eql(1);",
+                  "});",
+                  "pm.test('Streak of 1 day', () => {",
+                  "    pm.expect(habit.current_streak).to.eql(1);",
+                  "    pm.expect(habit.longest_streak).to.eql(1);",
+                  "    pm.expect(habit.streak_unit).to.eql('days');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Complete Habit - again (no double count)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Token {{token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/habits/{{habit_id}}/complete/"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('Still 1 this week', () => pm.expect(pm.response.json().completions_this_week).to.eql(1));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Undo Habit Completion",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Token {{token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/habits/{{habit_id}}/complete/",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"completed\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "const habit = pm.response.json();",
+                  "pm.test('Not done today, 0 this week', () => {",
+                  "    pm.expect(habit.completed_today).to.be.false;",
+                  "    pm.expect(habit.completions_this_week).to.eql(0);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Complete Habit - redo",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Token {{token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/habits/{{habit_id}}/complete/"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('Done today again', () => pm.expect(pm.response.json().completed_today).to.be.true);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete Habit",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Token {{token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/habits/{{weekly_habit_id}}/"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 204 No Content', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Deleted Habit",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Token {{token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/habits/{{weekly_habit_id}}/"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 404 Not Found', () => pm.response.to.have.status(404));",
+                  "pm.test('Message: ' + \"No Habit matches the given query.\", () => pm.expect(pm.response.json().detail).to.eql(\"No Habit matches the given query.\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Habit History (today)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Token {{token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/habits/history/?start={{today}}&end={{today}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('Today: 1 of 1 habits done', () => {",
+                  "    pm.expect(pm.response.json()).to.eql([{ date: pm.collectionVariables.get('today'), done: 1, total: 1 }]);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "4. Focus",
+      "description": "Start, complete, cancel, and view focus session history.",
+      "item": [
+        {
+          "name": "Start - no task",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Token {{token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/focus/start/",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));",
+                  "pm.test('Error on task: ' + \"This field is required.\", () => {",
+                  "    pm.expect(pm.response.json().task).to.include(\"This field is required.\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Start Focus Session",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Token {{token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/focus/start/",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"task\": {{task_id}},\n    \"duration\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201 Created', () => pm.response.to.have.status(201));",
+                  "const session = pm.response.json();",
+                  "pm.test('Running, linked to the task', () => {",
+                  "    pm.expect(session.status).to.eql('running');",
+                  "    pm.expect(session.task_title).to.eql('Learn Java basics');",
+                  "    pm.expect(session.duration).to.eql(1);",
+                  "    pm.expect(session.remaining_seconds).to.be.within(55, 60);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Active Session",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Token {{token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/focus/active/"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('Returns the running session', () => pm.expect(pm.response.json().status).to.eql('running'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Start - already running",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Token {{token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/focus/start/",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"task\": {{task_id}}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));",
+                  "pm.test('Message: ' + \"You already have a focus session running. Complete or cancel it first.\", () => pm.expect(pm.response.json().detail).to.eql(\"You already have a focus session running. Complete or cancel it first.\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Complete - too early",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Token {{token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/focus/complete/"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));",
+                  "pm.test('Message: ' + \"This session has 1 minute(s) left. Cancel it to stop early.\", () => pm.expect(pm.response.json().detail).to.eql(\"This session has 1 minute(s) left. Cancel it to stop early.\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Cancel Focus Session",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Token {{token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/focus/cancel/"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "const session = pm.response.json();",
+                  "pm.test('Cancelled with an end time', () => {",
+                  "    pm.expect(session.status).to.eql('cancelled');",
+                  "    pm.expect(session.end_time).to.not.be.null;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Active Session - none running",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Token {{token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/focus/active/"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 204 No Content', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Start Focus Session - 1 minute",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Token {{token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/focus/start/",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"task\": {{task_id}},\n    \"duration\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201 Created', () => pm.response.to.have.status(201));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Complete Focus Session (waits 61 seconds)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Token {{token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/focus/complete/",
+            "description": "Waits 61 seconds before sending, so the 1-minute session is finished."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Wait for the 1-minute session to finish before completing it",
+                  "setTimeout(() => {}, 61000);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('Session completed', () => pm.expect(pm.response.json().status).to.eql('completed'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Focus History",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Token {{token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/focus/history/"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('Both sessions, newest first', () => {",
+                  "    const statuses = pm.response.json().results.map((s) => s.status);",
+                  "    pm.expect(statuses).to.eql(['completed', 'cancelled']);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "5. Dashboard",
+      "description": "Dashboard statistics, productivity score and weekly report.",
+      "item": [
+        {
+          "name": "Dashboard Statistics",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Token {{token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/dashboard/"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "const stats = pm.response.json();",
+                  "pm.test('Has all dashboard fields', () => {",
+                  "    pm.expect(stats).to.have.all.keys('total_tasks', 'completed_tasks', 'pending_tasks',",
+                  "        'total_habits', 'completed_habits', 'productivity_score', 'focus_minutes');",
+                  "});",
+                  "pm.test('Counts match this run', () => {",
+                  "    pm.expect(stats.total_tasks).to.eql(1);",
+                  "    pm.expect(stats.completed_tasks).to.eql(1);",
+                  "    pm.expect(stats.pending_tasks).to.eql(0);",
+                  "    pm.expect(stats.total_habits).to.eql(1);",
+                  "    pm.expect(stats.completed_habits).to.eql(1);",
+                  "    pm.expect(stats.focus_minutes).to.eql(1);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Productivity Score",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Token {{token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/dashboard/productivity/"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "const p = pm.response.json();",
+                  "pm.test('Has all productivity fields', () => {",
+                  "    pm.expect(p).to.have.all.keys('task_completion', 'habit_completion', 'focus_score', 'productivity_score');",
+                  "});",
+                  "pm.test('Score = 50% tasks + 30% habits + 20% focus', () => {",
+                  "    const expected = Math.round((50 * p.task_completion + 30 * p.habit_completion + 20 * p.focus_score) / 100);",
+                  "    pm.expect(p.productivity_score).to.eql(expected);",
+                  "});",
+                  "pm.test('Values match this run: 100% tasks, 100% habits, 1 focus minute', () => {",
+                  "    pm.expect(p).to.eql({ task_completion: 100, habit_completion: 100, focus_score: 1, productivity_score: 80 });",
+                  "});",
+                  "pm.collectionVariables.set('productivity_score', p.productivity_score);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Weekly Report",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Token {{token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/dashboard/weekly-report/"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "const report = pm.response.json();",
+                  "const todayEntry = report[report.length - 1];",
+                  "pm.test('One entry per day from Monday to today', () => {",
+                  "    pm.expect(report[0].date).to.eql('Monday');",
+                  "    pm.expect(todayEntry.date).to.eql(pm.collectionVariables.get('weekday'));",
+                  "});",
+                  "pm.test(\"Today's score matches the productivity score\", () => {",
+                  "    pm.expect(todayEntry.score).to.eql(Number(pm.collectionVariables.get('productivity_score')));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Dashboard Overview",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Token {{token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/dashboard/overview/"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "const overview = pm.response.json();",
+                  "pm.test('Has trends, counts and lists', () => {",
+                  "    pm.expect(overview).to.include.all.keys('completed_this_week', 'created_this_week', 'due_soon', 'overdue',",
+                  "        'status', 'open_by_priority', 'upcoming', 'recent_activity');",
+                  "});",
+                  "pm.test('Counts match this run: 1 completed task, none open', () => {",
+                  "    pm.expect(overview.status).to.eql({ pending: 0, in_progress: 0, completed: 1 });",
+                  "    pm.expect(overview.completed_this_week).to.eql(1);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Productivity History (7 days)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Token {{token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/dashboard/history/?days=7"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "const history = pm.response.json();",
+                  "pm.test('7 days, oldest first, ending today', () => {",
+                  "    pm.expect(history).to.have.lengthOf(7);",
+                  "    pm.expect(history[6].date).to.eql(pm.collectionVariables.get('today'));",
+                  "});",
+                  "pm.test(\"Today's score matches the productivity score\", () => {",
+                  "    pm.expect(history[6].productivity_score).to.eql(Number(pm.collectionVariables.get('productivity_score')));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "6. Notes",
+      "description": "Create, list, search, pin, edit and delete notes.",
+      "item": [
+        {
+          "name": "Create Note",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Token {{token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/notes/",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"title\": \"Shopping list\",\n    \"content\": \"Milk\\nEggs\\nBread\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201 Created', () => pm.response.to.have.status(201));",
+                  "const note = pm.response.json();",
+                  "pm.collectionVariables.set('note_id', note.id);",
+                  "pm.test('Saved with defaults: no colour, not pinned', () => {",
+                  "    pm.expect(note.title).to.eql('Shopping list');",
+                  "    pm.expect(note.content).to.eql('Milk\\nEggs\\nBread');",
+                  "    pm.expect(note.color).to.eql('default');",
+                  "    pm.expect(note.pinned).to.be.false;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create Note - text only, yellow, pinned",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Token {{token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/notes/",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"content\": \"Remember to run the Newman tests\",\n    \"color\": \"yellow\",\n    \"pinned\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201 Created', () => pm.response.to.have.status(201));",
+                  "const note = pm.response.json();",
+                  "pm.collectionVariables.set('pinned_note_id', note.id);",
+                  "pm.test('A note without a title is allowed', () => {",
+                  "    pm.expect(note.title).to.eql('');",
+                  "    pm.expect(note.color).to.eql('yellow');",
+                  "    pm.expect(note.pinned).to.be.true;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create Note - blank",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Token {{token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/notes/",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"title\": \"  \",\n    \"content\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));",
+                  "pm.test('Error on title: ' + \"A note needs a title or some text.\", () => {",
+                  "    pm.expect(pm.response.json().title).to.include(\"A note needs a title or some text.\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create Note - invalid colour",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Token {{token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/notes/",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"title\": \"Colours\",\n    \"color\": \"red\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));",
+                  "pm.test('Error on color: ' + \"\\\"red\\\" is not a valid choice.\", () => {",
+                  "    pm.expect(pm.response.json().color).to.include(\"\\\"red\\\" is not a valid choice.\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List Notes",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Token {{token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/notes/"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "const page = pm.response.json();",
+                  "pm.test('Both notes, pinned first', () => {",
+                  "    pm.expect(page.count).to.eql(2);",
+                  "    pm.expect(page.results[0].id).to.eql(Number(pm.collectionVariables.get('pinned_note_id')));",
+                  "    pm.expect(page.results[1].id).to.eql(Number(pm.collectionVariables.get('note_id')));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Note",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Token {{token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/notes/{{note_id}}/"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('Returns the note', () => pm.expect(pm.response.json().title).to.eql('Shopping list'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Pin Note (PATCH)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Token {{token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/notes/{{note_id}}/",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"pinned\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('Pinned', () => pm.expect(pm.response.json().pinned).to.be.true);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update Note (PUT)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Token {{token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/notes/{{note_id}}/",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"title\": \"Groceries\",\n    \"content\": \"Milk\\nEggs\\nBread\\nCoffee\",\n    \"color\": \"green\",\n    \"pinned\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "const note = pm.response.json();",
+                  "pm.test('Title, colour and pin updated', () => {",
+                  "    pm.expect(note.title).to.eql('Groceries');",
+                  "    pm.expect(note.color).to.eql('green');",
+                  "    pm.expect(note.pinned).to.be.false;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update Note - empty",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Token {{token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/notes/{{note_id}}/",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"title\": \"\",\n    \"content\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));",
+                  "pm.test('Error on title: ' + \"A note needs a title or some text.\", () => {",
+                  "    pm.expect(pm.response.json().title).to.include(\"A note needs a title or some text.\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Search Notes",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Token {{token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/notes/?search=coffee"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('Finds the note by its text', () => {",
+                  "    const page = pm.response.json();",
+                  "    pm.expect(page.count).to.eql(1);",
+                  "    pm.expect(page.results[0].title).to.eql('Groceries');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Filter Notes by Colour",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Token {{token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/notes/?color=yellow"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('Only the yellow note', () => {",
+                  "    const page = pm.response.json();",
+                  "    pm.expect(page.count).to.eql(1);",
+                  "    pm.expect(page.results[0].id).to.eql(Number(pm.collectionVariables.get('pinned_note_id')));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Filter Notes by Pinned",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Token {{token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/notes/?pinned=true"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('Only the pinned note', () => pm.expect(pm.response.json().count).to.eql(1));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Filter Notes - invalid pinned",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Token {{token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/notes/?pinned=maybe"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));",
+                  "pm.test('Error on pinned: ' + \"Use true or false.\", () => {",
+                  "    pm.expect(pm.response.json().pinned).to.include(\"Use true or false.\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete Note",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Token {{token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/notes/{{note_id}}/"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 204 No Content', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Deleted Note",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Token {{token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/notes/{{note_id}}/"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 404 Not Found', () => pm.response.to.have.status(404));",
+                  "pm.test('Message: ' + \"No Note matches the given query.\", () => pm.expect(pm.response.json().detail).to.eql(\"No Note matches the given query.\"));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "7. Logout",
+      "description": "Log out and confirm the token no longer works.",
+      "item": [
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Token {{token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/auth/logout/"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('Message: ' + \"Logged out successfully.\", () => pm.expect(pm.response.json().detail).to.eql(\"Logged out successfully.\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Current User - after logout",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Token {{token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/auth/me/"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 401 Unauthorized', () => pm.response.to.have.status(401));",
+                  "pm.test('Message: ' + \"Invalid token.\", () => pm.expect(pm.response.json().detail).to.eql(\"Invalid token.\"));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://127.0.0.1:8000"
+    },
+    {
+      "key": "password",
+      "value": "Sunrise#2026"
+    },
+    {
+      "key": "email",
+      "value": ""
+    },
+    {
+      "key": "token",
+      "value": ""
+    },
+    {
+      "key": "today",
+      "value": ""
+    },
+    {
+      "key": "weekday",
+      "value": ""
+    },
+    {
+      "key": "task_id",
+      "value": ""
+    },
+    {
+      "key": "second_task_id",
+      "value": ""
+    },
+    {
+      "key": "habit_id",
+      "value": ""
+    },
+    {
+      "key": "weekly_habit_id",
+      "value": ""
+    },
+    {
+      "key": "productivity_score",
+      "value": ""
+    },
+    {
+      "key": "note_id",
+      "value": ""
+    },
+    {
+      "key": "pinned_note_id",
+      "value": ""
+    }
+  ]
+}

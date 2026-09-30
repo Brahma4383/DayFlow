@@ -1,0 +1,15 @@
+# Secrets
+.env
+
+# Virtual environment
+venv/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Local database
+db.sqlite3
+
+# collectstatic output
+staticfiles/
